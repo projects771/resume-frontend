@@ -260,25 +260,40 @@ export default function App() {
     <>
       <ParticleCanvas theme={theme} />
       
-      {/* MOBILE RESPONSIVE FIXES INJECTED HERE */}
+      {/* UPDATED: Mobile Navbar Dashboard Fix */}
       <style>{`
-        @media (max-width: 600px) {
-          .nav-actions { gap: 8px !important; }
-          .nav-btn { padding: 6px 10px !important; font-size: 13px !important; }
-          .nav-user { display: flex; align-items: center; gap: 6px; }
+        @media (max-width: 768px) {
+          .top-nav {
+            flex-wrap: wrap !important;
+            height: auto !important;
+            padding: 15px !important;
+            gap: 15px;
+            justify-content: center !important;
+          }
+          .nav-logo img {
+            height: 35px !important;
+          }
+          .nav-actions {
+            width: 100%;
+            justify-content: center !important;
+            flex-wrap: wrap;
+            gap: 10px !important;
+          }
+          .nav-btn {
+            padding: 8px 14px !important;
+            font-size: 14px !important;
+          }
           .nav-username { 
-            max-width: 70px; 
+            max-width: 140px; 
             overflow: hidden; 
             text-overflow: ellipsis; 
             white-space: nowrap; 
-            display: inline-block; 
           }
         }
       `}</style>
 
       {page === "landing" && (
         <nav className="top-nav">
-          {/* LOGO FIX: Changed onClick to trigger a hard refresh */}
           <button className="nav-logo" onClick={() => window.location.href = '/'} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
             <img 
               src={theme === "dark" ? "/syntaxcv_navbar_dark.png" : "/syntaxcv_navbar_light.png"} 
@@ -435,8 +450,8 @@ export default function App() {
       
       {page === "builder" && (
         <div className="builder-page">
-          {/* LOGO FIX APPLIED TO THE BUILDER BACK BUTTON AS WELL */}
-          <button className="back-home-btn" onClick={() => window.location.href = '/'}>← Home</button>
+          {/* UPDATED: Reverted back to smooth internal navigation! */}
+          <button className="back-home-btn" onClick={goToLanding}>← Home</button>
           
           {showTemplateModal && (
             <div className="modal-overlay">

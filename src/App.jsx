@@ -168,8 +168,9 @@ export default function App() {
     setPhotoSrc(null); 
   };
   
-  const handlePrint = useReactToPrint({
-    content: () => resumeRef.current,
+const handlePrint = useReactToPrint({
+    content: () => resumeRef.current, // Supports older versions (v2)
+    contentRef: resumeRef,            // Supports newest versions (v3)
     documentTitle: `${form.name || 'Resume'}_SyntaxCV`,
     onAfterPrint: () => {
       if (token) {
@@ -181,7 +182,7 @@ export default function App() {
         }).then(() => {
           setForm(emptyForm);
           setPhotoSrc(null);
-          alert("Success! Your ATS-friendly PDF has downloaded.");
+          alert("Success! Your data has been securely wiped.");
         });
       }
     }

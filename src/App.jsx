@@ -23,10 +23,8 @@ export default function App() {
   const [loginTab, setLoginTab] = useState("signin");
   const [font, setFont] = useState(() => localStorage.getItem("selectedFont") || "Arial");
   
-  // Photo state now holds the Cloudinary URL
   const [photoSrc, setPhotoSrc] = useState(null); 
   
-  // Backend Auth State
   const [token, setToken] = useState(() => localStorage.getItem('resumeToken') || null);
   const [loggedInUser, setLoggedInUser] = useState(() => {
     const u = localStorage.getItem("loggedInUser"); return u ? JSON.parse(u) : null;
@@ -45,7 +43,6 @@ export default function App() {
 
   const resumeRef = useRef();
 
-  // --- 1. FETCH DATA ON LOGIN ---
   useEffect(() => {
     if (token && page === "builder") {
       fetch(`${import.meta.env.VITE_API_URL}/api/resume`, {
@@ -59,7 +56,6 @@ export default function App() {
             gmail: data.gmail || "", about: data.about || "", education: data.education || "", 
             experience: data.experience || "", skills: data.skills || ""
           });
-          // Load the image from the database if it exists!
           if (data.photo) setPhotoSrc(data.photo);
         }
       })
@@ -67,7 +63,6 @@ export default function App() {
     }
   }, [token, page]);
 
-  // --- 2. AUTO-SAVE HOOK (Debounced) ---
   useEffect(() => {
     if (!token || page !== "builder") return;
     setSaveStatus("Saving...");
@@ -76,7 +71,6 @@ export default function App() {
       fetch(`${import.meta.env.VITE_API_URL}/api/resume`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        // Include the photo URL in the database save!
         body: JSON.stringify({ ...form, photo: photoSrc })
       })
       .then(res => {
@@ -153,7 +147,6 @@ export default function App() {
     }
   };
 
-  // --- 3. CLOUDINARY UPLOAD HANDLER ---
   const handlePhoto = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     if (!file.type.startsWith("image/")) { alert("Please select a valid image file"); return; }
@@ -163,17 +156,16 @@ export default function App() {
 
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("upload_preset", "resume_photos"); // ⚠️ REPLACE THIS
+    formData.append("upload_preset", "YOUR_UPLOAD_PRESET");
     
     try {
-      // ⚠️ REPLACE 'YOUR_CLOUD_NAME' BELOW
-      const response = await fetch("https://api.cloudinary.com/v1_1/dmxqljiar/image/upload", {
+      const response = await fetch("https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/image/upload", {
         method: "POST",
         body: formData,
       });
       
       const data = await response.json();
-      setPhotoSrc(data.secure_url); // This saves the clean URL and triggers auto-save
+      setPhotoSrc(data.secure_url);
       setSaveStatus("Image uploaded! ✔️");
     } catch (error) {
       setSaveStatus("Image upload failed.");
@@ -182,10 +174,9 @@ export default function App() {
   };
 
   const removePhoto = () => {
-    setPhotoSrc(null); // Setting this to null will trigger auto-save and remove it from DB
+    setPhotoSrc(null); 
   };
   
-  // --- 4. ATS-FRIENDLY PDF & AUTO-WIPE ---
   const handlePrint = useReactToPrint({
     content: () => resumeRef.current,
     documentTitle: `${form.name || 'Resume'}_SyntaxCV`,
@@ -195,7 +186,7 @@ export default function App() {
         fetch(`${import.meta.env.VITE_API_URL}/api/resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ ...emptyForm, photo: null }) // Wipe the photo URL from DB
+          body: JSON.stringify({ ...emptyForm, photo: null }) 
         }).then(() => {
           setForm(emptyForm);
           setPhotoSrc(null);
@@ -279,9 +270,8 @@ export default function App() {
       <ParticleCanvas theme={theme} />
       {page === "landing" && (
         <nav className="top-nav">
-          <button className="nav-logo" onClick={goToLanding}>
-            <span className="nav-logo-icon">📄</span>
-            <span className="nav-logo-text">SyntaxCV</span>
+          <button className="nav-logo" onClick={goToLanding} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
+            <img src="/syntaxcv_navbar.png" alt="SyntaxCV" style={{ height: '40px', width: 'auto' }} />
           </button>
           <div className="nav-actions">
             <button className="nav-btn nav-btn-ghost" onClick={() => { setShowAboutModal(true); setShowLoginModal(false); setExpandedCard(null); }}>👥 About Us</button>
@@ -301,8 +291,10 @@ export default function App() {
         <div className="landing-page">
           <div className="landing-container">
             <div className="landing-content">
-              <h1 className="landing-title">📄 Professional Resume Builder</h1>
-              <p className="landing-subtitle">Create a stunning, professional resume in minutes</p>
+              
+              <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+                <img src="/syntaxcv_hero.png" alt="SyntaxCV - Professional Resume Builder" style={{ maxWidth: '100%', height: 'auto', maxHeight: '180px' }} />
+              </div>
 
               <div className="landing-features">
                 {[
@@ -531,7 +523,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Imported Component handles the Right side UI */}
             <ResumePreview 
               template={template} 
               form={form} 

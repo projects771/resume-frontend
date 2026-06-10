@@ -147,30 +147,21 @@ export default function App() {
     }
   };
 
-  const handlePhoto = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
+  // UPDATED: Standard Base64 Image Upload instead of Cloudinary
+  const handlePhoto = (e) => {
+    const file = e.target.files?.[0]; 
+    if (!file) return;
     if (!file.type.startsWith("image/")) { alert("Please select a valid image file"); return; }
     if (file.size > 5 * 1024 * 1024) { alert("File size must be less than 5MB"); return; }
     
-    setSaveStatus("Uploading image...");
+    setSaveStatus("Processing image...");
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", "YOUR_UPLOAD_PRESET");
-    
-    try {
-      const response = await fetch("https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/image/upload", {
-        method: "POST",
-        body: formData,
-      });
-      
-      const data = await response.json();
-      setPhotoSrc(data.secure_url);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPhotoSrc(reader.result); // Automatically saves Base64 string to state & triggers DB autosave
       setSaveStatus("Image uploaded! ✔️");
-    } catch (error) {
-      setSaveStatus("Image upload failed.");
-      console.error(error);
-    }
+    };
+    reader.readAsDataURL(file);
   };
 
   const removePhoto = () => {
@@ -190,7 +181,7 @@ export default function App() {
         }).then(() => {
           setForm(emptyForm);
           setPhotoSrc(null);
-          alert("Success! Your ATS-friendly PDF has downloaded and your data has been securely wiped.");
+          alert("Success! Your ATS-friendly PDF has downloaded.");
         });
       }
     }
@@ -509,7 +500,8 @@ export default function App() {
               </div>
               
               <div className="btn-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                <button className="btn btn-success" onClick={handlePrint} style={{ gridColumn: "span 2" }}>⬇️ Download & Wipe Data</button>
+                {/* UPDATED: Download button renamed */}
+                <button className="btn btn-success" onClick={handlePrint} style={{ gridColumn: "span 2" }}>⬇️ Download resume</button>
                 <button className="btn btn-info" onClick={undo} title="Ctrl+Z">↶ Undo</button>
                 <button className="btn btn-info" onClick={redo} title="Ctrl+Y">↷ Redo</button>
                 <button className="btn btn-danger" onClick={clearAll} style={{ gridColumn: "span 2" }}>🔄 Clear Form</button>

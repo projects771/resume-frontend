@@ -363,7 +363,7 @@ export default function App() {
                   { icon: "✨", title: "Multiple Templates", desc: "Choose from 6 unique professional resume templates" },
                   { icon: "🎨", title: "Customize Themes", desc: "Light & Dark theme modes with real-time preview" },
                   { icon: "☁️", title: "Auto-Save", desc: "Your data is automatically saved to your private account" },
-                  { icon: "📥", title: "Export as PDF", desc: "Download your resume as an ATS-friendly PDF instantly" },
+                  { icon: "📥", title: "ATS-Friendly", desc: "Download your resume as an ATS-friendly PDF instantly" },
                   { icon: "🔒", title: "Auto-Delete", desc: "We securely wipe your data from our servers after 1 day" },
                   { icon: "📊", title: "Word Counter", desc: "Track word count and get real-time suggestions" },
                 ].map((f) => (

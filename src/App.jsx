@@ -259,9 +259,27 @@ export default function App() {
   return (
     <>
       <ParticleCanvas theme={theme} />
+      
+      {/* MOBILE RESPONSIVE FIXES INJECTED HERE */}
+      <style>{`
+        @media (max-width: 600px) {
+          .nav-actions { gap: 8px !important; }
+          .nav-btn { padding: 6px 10px !important; font-size: 13px !important; }
+          .nav-user { display: flex; align-items: center; gap: 6px; }
+          .nav-username { 
+            max-width: 70px; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            white-space: nowrap; 
+            display: inline-block; 
+          }
+        }
+      `}</style>
+
       {page === "landing" && (
         <nav className="top-nav">
-          <button className="nav-logo" onClick={goToLanding} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
+          {/* LOGO FIX: Changed onClick to trigger a hard refresh */}
+          <button className="nav-logo" onClick={() => window.location.href = '/'} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
             <img 
               src={theme === "dark" ? "/syntaxcv_navbar_dark.png" : "/syntaxcv_navbar_light.png"} 
               alt="SyntaxCV" 
@@ -417,7 +435,8 @@ export default function App() {
       
       {page === "builder" && (
         <div className="builder-page">
-          <button className="back-home-btn" onClick={goToLanding}>← Home</button>
+          {/* LOGO FIX APPLIED TO THE BUILDER BACK BUTTON AS WELL */}
+          <button className="back-home-btn" onClick={() => window.location.href = '/'}>← Home</button>
           
           {showTemplateModal && (
             <div className="modal-overlay">

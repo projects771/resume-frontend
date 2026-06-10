@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useReactToPrint } from "react-to-print";
+import ParticleCanvas from "./components/ParticleCanvas";
+import ResumePreview from "./components/ResumePreview";
 import "./App.css";
 
 const LIMITS = { about: 300, education: 250, experience: 500, skills: 150 };
@@ -8,60 +11,6 @@ const SUGGESTIONS = {
   experience: "💡 Format: Role at Company (dates). Use action verbs (Led, Built, Increased). Include metrics when possible",
   skills: "💡 Group by category: Languages, Tools, Frameworks, Soft Skills. List 12-15 most relevant to role",
 };
-
-function ParticleCanvas({ theme }) {
-  const canvasRef = useRef(null);
-  const animRef = useRef(0);
-  const particlesRef = useRef([]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current; if (!canvas) return;
-    const ctx = canvas.getContext("2d"); if (!ctx) return;
-    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
-    resize(); window.addEventListener("resize", resize);
-    
-    particlesRef.current = Array.from({ length: 60 }, () => ({
-      x: Math.random() * canvas.width, y: Math.random() * canvas.height,
-      size: Math.random() * 2 + 0.5, speedX: (Math.random() - 0.5) * 0.8,
-      speedY: (Math.random() - 0.5) * 0.8, opacity: Math.random() * 0.5 + 0.2,
-    }));
-
-    const animate = () => {
-      const color = theme === "dark" ? "#00d4ff" : "#0066cc";
-      const bg = theme === "dark" ? "rgba(14,14,26,0.08)" : "rgba(255,255,255,0.05)";
-      ctx.globalAlpha = 1; ctx.fillStyle = bg; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      particlesRef.current.forEach((p) => {
-        p.x += p.speedX; p.y += p.speedY;
-        if (p.x > canvas.width) p.x = 0; if (p.x < 0) p.x = canvas.width;
-        if (p.y > canvas.height) p.y = 0; if (p.y < 0) p.y = canvas.height;
-        ctx.globalAlpha = p.opacity; ctx.fillStyle = color;
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
-      });
-
-      for (let i = 0; i < particlesRef.current.length; i++) {
-        for (let j = i + 1; j < particlesRef.current.length; j++) {
-          const dx = particlesRef.current[i].x - particlesRef.current[j].x;
-          const dy = particlesRef.current[i].y - particlesRef.current[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 120) {
-            ctx.globalAlpha = (1 - dist / 120) * 0.25;
-            ctx.strokeStyle = color; ctx.lineWidth = 0.8;
-            ctx.beginPath();
-            ctx.moveTo(particlesRef.current[i].x, particlesRef.current[i].y); 
-            ctx.lineTo(particlesRef.current[j].x, particlesRef.current[j].y);
-            ctx.stroke();
-          }
-        }
-      }
-      animRef.current = requestAnimationFrame(animate);
-    };
-    animate();
-    return () => { cancelAnimationFrame(animRef.current); window.removeEventListener("resize", resize); };
-  }, [theme]);
-
-  return <canvas ref={canvasRef} className="bg-canvas" />;
-}
 
 export default function App() {
   const [page, setPage] = useState(() => localStorage.getItem("currentPage") || "landing");
@@ -73,22 +22,72 @@ export default function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginTab, setLoginTab] = useState("signin");
   const [font, setFont] = useState(() => localStorage.getItem("selectedFont") || "Arial");
-  const [photoSrc, setPhotoSrc] = useState(() => localStorage.getItem("photoData"));
+  
+  // Photo state now holds the Cloudinary URL
+  const [photoSrc, setPhotoSrc] = useState(null); 
+  
+  // Backend Auth State
+  const [token, setToken] = useState(() => localStorage.getItem('resumeToken') || null);
   const [loggedInUser, setLoggedInUser] = useState(() => {
     const u = localStorage.getItem("loggedInUser"); return u ? JSON.parse(u) : null;
   });
+  
   const [loginForm, setLoginForm] = useState({ name: "", email: "", password: "" });
   const [loginError, setLoginError] = useState("");
-  const [form, setForm] = useState(() => {
-    const saved = localStorage.getItem("resumeData");
-    if (saved) { try { return JSON.parse(saved); } catch { } }
-    return { name: "", phone: "", location: "", gmail: "", about: "", education: "", experience: "", skills: "" };
-  });
+  const [saveStatus, setSaveStatus] = useState("");
+
+  const [form, setForm] = useState({ name: "", phone: "", location: "", gmail: "", about: "", education: "", experience: "", skills: "" });
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const [activeSuggest, setActiveSuggest] = useState(null);
   const [expandedCard, setExpandedCard] = useState(null);
   const [templateModalShown, setTemplateModalShown] = useState(() => sessionStorage.getItem("templateModalShown") === "true");
+
+  const resumeRef = useRef();
+
+  // --- 1. FETCH DATA ON LOGIN ---
+  useEffect(() => {
+    if (token && page === "builder") {
+      fetch(`${import.meta.env.VITE_API_URL}/api/resume`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.name !== undefined) {
+          setForm({
+            name: data.name || "", phone: data.phone || "", location: data.location || "", 
+            gmail: data.gmail || "", about: data.about || "", education: data.education || "", 
+            experience: data.experience || "", skills: data.skills || ""
+          });
+          // Load the image from the database if it exists!
+          if (data.photo) setPhotoSrc(data.photo);
+        }
+      })
+      .catch(err => console.error("Error fetching resume", err));
+    }
+  }, [token, page]);
+
+  // --- 2. AUTO-SAVE HOOK (Debounced) ---
+  useEffect(() => {
+    if (!token || page !== "builder") return;
+    setSaveStatus("Saving...");
+    
+    const autoSaveTimer = setTimeout(() => {
+      fetch(`${import.meta.env.VITE_API_URL}/api/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        // Include the photo URL in the database save!
+        body: JSON.stringify({ ...form, photo: photoSrc })
+      })
+      .then(res => {
+        if (res.ok) setSaveStatus("Saved to DB ✔️");
+        else setSaveStatus("Save failed");
+      })
+      .catch(() => setSaveStatus("Offline"));
+    }, 1500);
+
+    return () => clearTimeout(autoSaveTimer);
+  }, [form, photoSrc, token, page]);
 
   useEffect(() => { document.body.style.fontFamily = font; }, [font]);
   useEffect(() => {
@@ -117,9 +116,11 @@ export default function App() {
     }
   }, [page, template, templateModalShown]);
 
-  useEffect(() => { localStorage.setItem("resumeData", JSON.stringify(form)); }, [form]);
-
-  const goToBuilder = () => setPage("builder");
+  const goToBuilder = () => {
+    if (!token) setShowLoginModal(true);
+    else setPage("builder");
+  };
+  
   const goToLanding = () => { setPage("landing"); setShowAboutModal(false); setShowLoginModal(false); setShowSettings(false); };
   
   const saveState = useCallback((current, prev) => {
@@ -148,178 +149,145 @@ export default function App() {
   const clearAll = () => {
     if (confirm("⚠️ This will clear all your data. Are you sure?")) {
       const empty = { name: "", phone: "", location: "", gmail: "", about: "", education: "", experience: "", skills: "" };
-      saveState(form, undoStack); setForm(empty); setPhotoSrc(null); localStorage.removeItem("photoData");
+      saveState(form, undoStack); setForm(empty); setPhotoSrc(null);
     }
   };
 
-  const handlePhoto = (e) => {
+  // --- 3. CLOUDINARY UPLOAD HANDLER ---
+  const handlePhoto = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     if (!file.type.startsWith("image/")) { alert("Please select a valid image file"); return; }
     if (file.size > 5 * 1024 * 1024) { alert("File size must be less than 5MB"); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const r = ev.target?.result; setPhotoSrc(r); localStorage.setItem("photoData", r);
-    };
-    reader.readAsDataURL(file);
-  };
-  const removePhoto = () => { setPhotoSrc(null); localStorage.removeItem("photoData"); };
-  
-  const downloadPDF = () => {
-    const resumeElement = document.querySelector('#resumeArea .resume');
-    if (!resumeElement) {
-      alert("No resume content to download.");
-      return;
-    }
     
-    const cloneResume = resumeElement.cloneNode(true);
-    const printContainer = document.createElement('div');
-    printContainer.style.position = 'absolute';
-    printContainer.style.top = '-9999px';
-    printContainer.style.left = '-9999px';
-    printContainer.style.width = '210mm';
-    printContainer.style.background = 'white';
-    printContainer.style.padding = '20px';
-    printContainer.appendChild(cloneResume);
-    document.body.appendChild(printContainer);
+    setSaveStatus("Uploading image...");
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", "resume_photos"); // ⚠️ REPLACE THIS
     
-    const originalTitle = document.title;
-    document.title = `${form.name || 'Resume'} - SyntaxCV`;
-    
-    if (typeof html2pdf !== 'undefined') {
-      const opt = {
-        margin: [0.5, 0.5, 0.5, 0.5],
-        filename: `${form.name || 'Resume'}_${new Date().toISOString().slice(0,10)}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, letterRendering: true, useCORS: true, logging: false },
-        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-      };
-      html2pdf().set(opt).from(cloneResume).save().then(() => {
-        document.body.removeChild(printContainer);
-        document.title = originalTitle;
-      }).catch(() => {
-        fallbackPrint(cloneResume, printContainer, originalTitle);
+    try {
+      // ⚠️ REPLACE 'YOUR_CLOUD_NAME' BELOW
+      const response = await fetch("https://api.cloudinary.com/v1_1/dmxqljiar/image/upload", {
+        method: "POST",
+        body: formData,
       });
-    } else {
-      fallbackPrint(cloneResume, printContainer, originalTitle);
+      
+      const data = await response.json();
+      setPhotoSrc(data.secure_url); // This saves the clean URL and triggers auto-save
+      setSaveStatus("Image uploaded! ✔️");
+    } catch (error) {
+      setSaveStatus("Image upload failed.");
+      console.error(error);
     }
   };
 
-  const fallbackPrint = (cloneResume, printContainer, originalTitle) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.top = '-9999px';
-    iframe.style.left = '-9999px';
-    document.body.appendChild(iframe);
-    
-    const iframeDoc = iframe.contentWindow.document;
-    iframeDoc.open();
-    iframeDoc.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${form.name || 'Resume'}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; padding: 20px; background: white; }
-          .resume { max-width: 210mm; margin: 0 auto; background: white; padding: 30px 35px; color: #333; }
-          .resume-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #eee; }
-          .resume-name { font-size: 28px; font-weight: 900; color: #222; margin: 0 0 6px; }
-          .header-contact { display: flex; gap: 16px; flex-wrap: wrap; }
-          .contact-item { font-size: 13px; color: #666; }
-          .resume-photo { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; margin-left: 20px; }
-          .resume-section { margin-bottom: 20px; }
-          .section-title { font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #0066cc; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1.5px solid #e0e0e0; }
-          .section-content { font-size: 14px; line-height: 1.7; color: #444; white-space: pre-wrap; }
-          .template-classic .resume-header { text-align: center; border-bottom: 3px double #333; flex-direction: column; align-items: center; }
-          .template-classic .resume-name { font-size: 32px; text-transform: uppercase; letter-spacing: 2px; color: #000; }
-          .template-modern .resume-header { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 30px; border-radius: 8px 8px 0 0; }
-          .template-modern .resume-name { color: white; }
-          @media print { body { padding: 0; margin: 0; } .resume { box-shadow: none; padding: 20px; } }
-        </style>
-      </head>
-      <body>
-        ${cloneResume.outerHTML}
-      </body>
-      </html>
-    `);
-    iframeDoc.close();
-    
-    setTimeout(() => {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-        document.body.removeChild(printContainer);
-        document.title = originalTitle;
-      }, 500);
-    }, 100);
+  const removePhoto = () => {
+    setPhotoSrc(null); // Setting this to null will trigger auto-save and remove it from DB
   };
+  
+  // --- 4. ATS-FRIENDLY PDF & AUTO-WIPE ---
+  const handlePrint = useReactToPrint({
+    content: () => resumeRef.current,
+    documentTitle: `${form.name || 'Resume'}_SyntaxCV`,
+    onAfterPrint: () => {
+      if (token) {
+        const emptyForm = { name: "", phone: "", location: "", gmail: "", about: "", education: "", experience: "", skills: "" };
+        fetch(`${import.meta.env.VITE_API_URL}/api/resume`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ ...emptyForm, photo: null }) // Wipe the photo URL from DB
+        }).then(() => {
+          setForm(emptyForm);
+          setPhotoSrc(null);
+          alert("Success! Your ATS-friendly PDF has downloaded and your data has been securely wiped.");
+        });
+      }
+    }
+  });
 
   const selectTemplate = (t) => { setTemplate(t); localStorage.setItem("template", t); setShowTemplateModal(false); };
-  
   const totalWords = () => [form.about, form.education, form.experience, form.skills].reduce((s, t) => s + (t.trim() ? t.trim().split(/\s+/).length : 0), 0);
   const charPercent = (f) => { const l = LIMITS[f]; return l ? Math.round((form[f].length / l) * 100) : 100; };
   const charColor = (f) => { const p = charPercent(f); return p > 90 ? "#dc3545" : p > 75 ? "#ffc107" : "#28a745"; };
 
-  const handleSignUp = () => {
+  const handleSignUp = async () => {
     setLoginError("");
     if (!loginForm.name || !loginForm.email || !loginForm.password) { setLoginError("Please fill in all fields."); return; }
     if (loginForm.password.length < 6) { setLoginError("Password must be at least 6 characters."); return; }
-    const users = JSON.parse(localStorage.getItem("users") || "[]");
-    if (users.find((u) => u.email === loginForm.email)) { setLoginError("An account with this email already exists."); return; }
-    users.push({ name: loginForm.name, email: loginForm.email, password: loginForm.password });
-    localStorage.setItem("users", JSON.stringify(users));
-    const userObj = { name: loginForm.name, email: loginForm.email };
-    localStorage.setItem("loggedInUser", JSON.stringify(userObj)); setLoggedInUser(userObj);
-    setShowLoginModal(false); setLoginForm({ name: "", email: "", password: "" });
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginForm.email, password: loginForm.password })
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setLoginTab("signin");
+        setLoginError("Account created! Please log in.");
+      } else {
+        setLoginError(result.error);
+      }
+    } catch (err) {
+      setLoginError("Server connection failed.");
+    }
   };
 
-  const handleSignIn = () => {
+  const handleSignIn = async () => {
     setLoginError("");
     if (!loginForm.email || !loginForm.password) { setLoginError("Please enter email and password."); return; }
-    const users = JSON.parse(localStorage.getItem("users") || "[]");
-    const user = users.find((u) => u.email === loginForm.email && u.password === loginForm.password);
-    if (!user) { setLoginError("Invalid email or password."); return; }
-    const userObj = { name: user.name, email: user.email };
-    localStorage.setItem("loggedInUser", JSON.stringify(userObj)); setLoggedInUser(userObj);
-    setShowLoginModal(false); setLoginForm({ name: "", email: "", password: "" });
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginForm.email, password: loginForm.password })
+      });
+      const result = await response.json();
+      
+      if (response.ok) {
+        localStorage.setItem('resumeToken', result.token);
+        setToken(result.token);
+        const userObj = { name: "User", email: loginForm.email };
+        localStorage.setItem("loggedInUser", JSON.stringify(userObj)); 
+        setLoggedInUser(userObj);
+        setShowLoginModal(false); 
+        setLoginForm({ name: "", email: "", password: "" });
+        if (page === "landing") setPage("builder");
+      } else {
+        setLoginError(result.error);
+      }
+    } catch (err) {
+      setLoginError("Server connection failed.");
+    }
   };
 
-  const handleLogout = () => { localStorage.removeItem("loggedInUser"); setLoggedInUser(null); };
-
-  const toggleTeamCard = (name) => {
-    setExpandedCard(expandedCard === name ? null : name);
+  const handleLogout = () => { 
+    localStorage.removeItem("loggedInUser"); 
+    localStorage.removeItem("resumeToken");
+    setToken(null);
+    setLoggedInUser(null); 
+    setForm({ name: "", phone: "", location: "", gmail: "", about: "", education: "", experience: "", skills: "" }); 
+    setPhotoSrc(null);
+    setPage("landing");
   };
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === "Escape") { setShowAboutModal(false); setShowLoginModal(false); setShowSettings(false); }
-      if (page !== "builder") return;
-      if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); }
-      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && e.key === "z"))) { e.preventDefault(); redo(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === "p") { e.preventDefault(); downloadPDF(); }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [page, form, undoStack, redoStack]);
+  const toggleTeamCard = (name) => setExpandedCard(expandedCard === name ? null : name);
 
   return (
     <>
       <ParticleCanvas theme={theme} />
       {page === "landing" && (
         <nav className="top-nav">
-          <button 
-            className="nav-logo" 
-            onClick={goToLanding} 
-            style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-          >
-            <img src="/large_resume.png" alt="SyntaxCV Logo" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} />
+          <button className="nav-logo" onClick={goToLanding}>
+            <span className="nav-logo-icon">📄</span>
+            <span className="nav-logo-text">SyntaxCV</span>
           </button>
           <div className="nav-actions">
             <button className="nav-btn nav-btn-ghost" onClick={() => { setShowAboutModal(true); setShowLoginModal(false); setExpandedCard(null); }}>👥 About Us</button>
             {loggedInUser ? (
               <div className="nav-user">
-                <span className="nav-username">👤 {loggedInUser.name}</span>
+                <span className="nav-username">👤 {loggedInUser.email.split('@')[0]}</span>
                 <button className="nav-btn nav-btn-outline" onClick={handleLogout}>Log Out</button>
               </div>
             ) : (
@@ -333,17 +301,16 @@ export default function App() {
         <div className="landing-page">
           <div className="landing-container">
             <div className="landing-content">
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '40px' }}>
-                <img src="/large_resume.png" alt="SyntaxCV - Professional Resume Builder" style={{ maxWidth: '100%', height: 'auto', maxHeight: '150px' }} />
-              </div>
+              <h1 className="landing-title">📄 Professional Resume Builder</h1>
+              <p className="landing-subtitle">Create a stunning, professional resume in minutes</p>
 
-             <div className="landing-features">
+              <div className="landing-features">
                 {[
                   { icon: "✨", title: "Multiple Templates", desc: "Choose from 6 unique professional resume templates" },
                   { icon: "🎨", title: "Customize Themes", desc: "Light & Dark theme modes with real-time preview" },
-                  { icon: "🤖", title: "ATS-Friendly Designs", desc: "Engineered to be easily read and parsed by Applicant Tracking Systems" },
-                  { icon: "💾", title: "Auto-Save", desc: "Your data is automatically saved locally" },
-                  { icon: "📥", title: "Export as PDF", desc: "Download your resume as a PDF file instantly" },
+                  { icon: "☁️", title: "Auto-Save", desc: "Your data is automatically saved to your private account" },
+                  { icon: "📥", title: "Export as PDF", desc: "Download your resume as an ATS-friendly PDF instantly" },
+                  { icon: "🔒", title: "Auto-Delete", desc: "We securely wipe your data from our servers once you download" },
                   { icon: "📊", title: "Word Counter", desc: "Track word count and get real-time suggestions" },
                 ].map((f) => (
                   <div className="feature" key={f.title}>
@@ -358,7 +325,7 @@ export default function App() {
 
               <div className="landing-explanation">
                 <h2>How It Works</h2>
-                <p>Our Professional Resume Builder is designed to help you create a stunning resume in just minutes. With an intuitive interface, real-time preview, and multiple professional templates, you can craft the perfect resume tailored to your needs. Simply fill in your information on the left side, watch your resume come to life on the right side in real-time, and customize it with your preferred template and theme. All your data is automatically saved locally on your device, so you never have to worry about losing your work.</p>
+                <p>Our Professional Resume Builder is designed to help you create a stunning resume in just minutes. With an intuitive interface, real-time preview, and multiple professional templates, you can craft the perfect resume tailored to your needs. Simply fill in your information on the left side, watch your resume come to life on the right side in real-time, and customize it with your preferred template and theme. All your data is automatically saved to the cloud, so you never have to worry about losing your work.</p>
               </div>
 
               <div className="focus-section">
@@ -368,7 +335,7 @@ export default function App() {
                   {[
                     { icon: "🎯", title: "ATS Compatibility", desc: "Our templates are engineered to pass Applicant Tracking Systems used by 99% of Fortune 500 companies." },
                     { icon: "⚡", title: "Speed & Simplicity", desc: "No steep learning curve. Fill in your details, pick a template, and download — a polished resume in under 5 minutes." },
-                    { icon: "🔒", title: "100% Private", desc: "Your personal data never leaves your device. Everything is stored locally in your browser." },
+                    { icon: "🔒", title: "100% Secure", desc: "Your personal data is encrypted and saved directly to our secure MongoDB database." },
                     { icon: "💡", title: "Smart Suggestions", desc: "Real-time tips guide you on what recruiters look for — from writing impactful summaries to quantifying achievements." },
                     { icon: "📱", title: "Works Everywhere", desc: "Fully responsive design works seamlessly across desktop, tablet, and mobile." },
                     { icon: "🏆", title: "Professional Quality", desc: "Designed to match the standards of resumes that get callbacks — clean typography and perfect spacing." },
@@ -396,8 +363,6 @@ export default function App() {
                   </a>
                 </div>
               </div>
-
-              <p className="landing-footer">Your data stays private. Everything is saved locally on your device.</p>
             </div>
           </div>
 
@@ -414,9 +379,8 @@ export default function App() {
                       <p className="team-role">Founder</p>
                     </div>
                     <div className="team-description">
-                      A dedicated 2nd year B.Tech student in Computer Science Engineering, specializing in Cyber Security. 
-                      Passionate about building secure, user-centric web applications and exploring ethical hacking. 
-                      Strong foundation in full-stack development and cybersecurity principles.
+                      A dedicated B.Tech student in Computer Science Engineering, specializing in Cyber Security. 
+                      Passionate about building secure, user-centric web applications and exploring ethical hacking.
                     </div>
                   </div>
                   <div className={`team-card ${expandedCard === "Gokul" ? "expanded" : ""}`} onClick={() => toggleTeamCard("Gokul")}>
@@ -425,9 +389,8 @@ export default function App() {
                       <p className="team-role">Founder</p>
                     </div>
                     <div className="team-description">
-                      A driven 2nd year B.Tech student pursuing Computer Science Engineering with specialization in Cyber Security. 
-                      Focuses on full-stack development, cryptography, and creating seamless digital experiences. 
-                      Combines technical prowess with creative problem-solving.
+                      A driven B.Tech student pursuing Computer Science Engineering with specialization in Cyber Security. 
+                      Focuses on full-stack development, cryptography, and creating seamless digital experiences.
                     </div>
                   </div>
                 </div>
@@ -445,10 +408,10 @@ export default function App() {
                   <button className={`login-tab${loginTab === "signup" ? " active" : ""}`} onClick={() => { setLoginTab("signup"); setLoginError(""); }}>Sign Up</button>
                 </div>
                 {loginTab === "signup" && (
-                  <input className="login-input" type="text" placeholder="Full Name" autoComplete="name" value={loginForm.name} onChange={(e) => setLoginForm((f) => ({ ...f, name: e.target.value }))} />
+                  <input className="login-input" type="text" placeholder="Full Name" value={loginForm.name} onChange={(e) => setLoginForm((f) => ({ ...f, name: e.target.value }))} />
                 )}
-                <input className="login-input" type="email" placeholder="Email Address" autoComplete="email" value={loginForm.email} onChange={(e) => setLoginForm((f) => ({ ...f, email: e.target.value }))} />
-                <input className="login-input" type="password" placeholder="Password" autoComplete="current-password" value={loginForm.password} onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") loginTab === "signin" ? handleSignIn() : handleSignUp(); }} />
+                <input className="login-input" type="email" placeholder="Email Address" value={loginForm.email} onChange={(e) => setLoginForm((f) => ({ ...f, email: e.target.value }))} />
+                <input className="login-input" type="password" placeholder="Password" value={loginForm.password} onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") loginTab === "signin" ? handleSignIn() : handleSignUp(); }} />
                 {loginError && <p className="login-error">{loginError}</p>}
                 <button className="login-submit-btn" onClick={loginTab === "signin" ? handleSignIn : handleSignUp}>{loginTab === "signin" ? "🔐 Sign In" : "✨ Create Account"}</button>
                 <p className="login-switch">
@@ -520,16 +483,23 @@ export default function App() {
                   <option value="harvard">Harvard</option> <option value="business">Business</option>
                 </select>
               </div>
+              <div className="settings-section">
+                <button onClick={handleLogout} style={{ width: '100%', padding: '8px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Logout</button>
+              </div>
             </div>
           )}
 
           <div className="wrapper">
             <div className="panel left">
-              <h2 className="panel-title">Build Resume</h2>
-              <input className="form-input" type="text" placeholder="Full Name" autoComplete="name" value={form.name} onChange={(e) => updateField("name", e.target.value)} />
-              <input className="form-input" type="tel" placeholder="Phone" autoComplete="tel" value={form.phone} onChange={(e) => updateField("phone", e.target.value)} />
-              <input className="form-input" type="text" placeholder="Location" autoComplete="off" value={form.location} onChange={(e) => updateField("location", e.target.value)} />
-              <input className="form-input" type="email" placeholder="Gmail" autoComplete="email" value={form.gmail} onChange={(e) => updateField("gmail", e.target.value)} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2 className="panel-title" style={{ margin: 0 }}>Build Resume</h2>
+                <span style={{ fontSize: '12px', color: '#888', fontWeight: 'bold' }}>{saveStatus}</span>
+              </div>
+              
+              <input className="form-input" type="text" placeholder="Full Name" value={form.name} onChange={(e) => updateField("name", e.target.value)} />
+              <input className="form-input" type="tel" placeholder="Phone" value={form.phone} onChange={(e) => updateField("phone", e.target.value)} />
+              <input className="form-input" type="text" placeholder="Location" value={form.location} onChange={(e) => updateField("location", e.target.value)} />
+              <input className="form-input" type="email" placeholder="Gmail" value={form.gmail} onChange={(e) => updateField("gmail", e.target.value)} />
               
               {["about", "education", "experience", "skills"].map((field) => (
                 <div key={field}>
@@ -546,11 +516,11 @@ export default function App() {
                 {photoSrc && <button className="btn btn-danger-outline" onClick={removePhoto}>Remove Photo</button>}
               </div>
               
-              <div className="btn-grid">
-                <button className="btn btn-success" onClick={downloadPDF} style={{ gridColumn: "span 2" }}>⬇️ Save as PDF</button>
+              <div className="btn-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                <button className="btn btn-success" onClick={handlePrint} style={{ gridColumn: "span 2" }}>⬇️ Download & Wipe Data</button>
                 <button className="btn btn-info" onClick={undo} title="Ctrl+Z">↶ Undo</button>
                 <button className="btn btn-info" onClick={redo} title="Ctrl+Y">↷ Redo</button>
-                <button className="btn btn-danger" onClick={clearAll} style={{ gridColumn: "span 2" }}>🔄 Clear All</button>
+                <button className="btn btn-danger" onClick={clearAll} style={{ gridColumn: "span 2" }}>🔄 Clear Form</button>
               </div>
               
               <div className="word-count">
@@ -561,26 +531,13 @@ export default function App() {
               </div>
             </div>
 
-            <div className="panel right" id="resumeArea">
-              <div className={`resume template-${template || "classic"}`}>
-                <div className="resume-header">
-                  <div className="header-content">
-                    <h1 className="resume-name">{form.name || "Your Name"}</h1>
-                    <div className="header-contact">
-                      {form.phone && <span className="contact-item">{form.phone}</span>}
-                      {form.gmail && <span className="contact-item">{form.gmail}</span>}
-                      {form.location && <span className="contact-item">{form.location}</span>}
-                    </div>
-                  </div>
-                  {photoSrc && <img src={photoSrc} className="resume-photo" alt="Profile" />}
-                </div>
-                
-                {form.about && ( <section className="resume-section"> <h2 className="section-title">Professional Summary</h2> <p className="section-content">{form.about}</p> </section>)}
-                {form.experience && ( <section className="resume-section"> <h2 className="section-title">Professional Experience</h2> <p className="section-content">{form.experience}</p> </section>)}
-                {form.education && ( <section className="resume-section"> <h2 className="section-title">Education</h2> <p className="section-content">{form.education}</p> </section>)}
-                {form.skills && ( <section className="resume-section"> <h2 className="section-title">Skills</h2> <p className="section-content">{form.skills}</p> </section>)}
-              </div>
-            </div>
+            {/* Imported Component handles the Right side UI */}
+            <ResumePreview 
+              template={template} 
+              form={form} 
+              photoSrc={photoSrc} 
+              resumeRef={resumeRef} 
+            />
           </div>
         </div>
       )}

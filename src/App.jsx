@@ -23,6 +23,9 @@ export default function App() {
   const [loginTab, setLoginTab] = useState("signin");
   const [font, setFont] = useState(() => localStorage.getItem("selectedFont") || "Arial");
   
+  // Mobile menu state
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   const [photoSrc, setPhotoSrc] = useState(null); 
   
   const [token, setToken] = useState(() => localStorage.getItem('resumeToken') || null);
@@ -115,7 +118,7 @@ export default function App() {
     else setPage("builder");
   };
   
-  const goToLanding = () => { setPage("landing"); setShowAboutModal(false); setShowLoginModal(false); setShowSettings(false); };
+  const goToLanding = () => { setPage("landing"); setShowAboutModal(false); setShowLoginModal(false); setShowSettings(false); setIsMenuOpen(false); };
   
   const saveState = useCallback((current, prev) => {
     setUndoStack([...prev, current].slice(-20)); setRedoStack([]);
@@ -167,23 +170,13 @@ export default function App() {
     setPhotoSrc(null); 
   };
   
+  // UPDATED: Removed the auto-wipe logic from handlePrint so data persists for 1 day
   const handlePrint = useReactToPrint({
     content: () => resumeRef.current, 
     contentRef: resumeRef,            
     documentTitle: `${form.name || 'Resume'}_SyntaxCV`,
     onAfterPrint: () => {
-      if (token) {
-        const emptyForm = { name: "", phone: "", location: "", gmail: "", about: "", education: "", experience: "", skills: "" };
-        fetch(`${import.meta.env.VITE_API_URL}/api/resume`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ ...emptyForm, photo: null }) 
-        }).then(() => {
-          setForm(emptyForm);
-          setPhotoSrc(null);
-          alert("Success! Your data has been securely wiped.");
-        });
-      }
+      alert("Success! Your resume has been downloaded. You can continue editing it later!");
     }
   });
 
@@ -260,28 +253,56 @@ export default function App() {
     <>
       <ParticleCanvas theme={theme} />
       
-      {/* UPDATED: Mobile Navbar Dashboard Fix */}
+      {/* MOBILE RESPONSIVE HAMBURGER MENU CSS */}
       <style>{`
+        .hamburger {
+          display: none;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          flex-direction: column;
+          gap: 5px;
+          padding: 5px;
+        }
+        .hamburger span {
+          width: 25px;
+          height: 3px;
+          border-radius: 2px;
+          transition: all 0.3s;
+        }
         @media (max-width: 768px) {
           .top-nav {
             flex-wrap: wrap !important;
             height: auto !important;
             padding: 15px !important;
-            gap: 15px;
-            justify-content: center !important;
+            justify-content: space-between !important;
+          }
+          .hamburger {
+            display: flex !important;
           }
           .nav-logo img {
             height: 35px !important;
           }
           .nav-actions {
+            display: none !important; /* Hidden by default on mobile */
             width: 100%;
-            justify-content: center !important;
-            flex-wrap: wrap;
-            gap: 10px !important;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 15px;
+            gap: 12px !important;
+          }
+          .nav-actions.mobile-open {
+            display: flex !important; /* Shows when hamburger is clicked */
           }
           .nav-btn {
-            padding: 8px 14px !important;
-            font-size: 14px !important;
+            width: 100%;
+            padding: 10px 14px !important;
+            font-size: 15px !important;
+          }
+          .nav-user {
+            justify-content: center;
+            width: 100%;
+            margin-bottom: 5px;
           }
           .nav-username { 
             max-width: 140px; 
@@ -301,15 +322,24 @@ export default function App() {
               style={{ height: '40px', width: 'auto' }} 
             />
           </button>
-          <div className="nav-actions">
-            <button className="nav-btn nav-btn-ghost" onClick={() => { setShowAboutModal(true); setShowLoginModal(false); setExpandedCard(null); }}>👥 About Us</button>
+
+          {/* HAMBURGER BUTTON */}
+          <button className="hamburger" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+            <span style={{ background: theme === 'dark' ? '#fff' : '#333' }}></span>
+            <span style={{ background: theme === 'dark' ? '#fff' : '#333' }}></span>
+            <span style={{ background: theme === 'dark' ? '#fff' : '#333' }}></span>
+          </button>
+
+          {/* DYNAMIC NAV ACTIONS */}
+          <div className={`nav-actions ${isMenuOpen ? 'mobile-open' : ''}`}>
+            <button className="nav-btn nav-btn-ghost" onClick={() => { setShowAboutModal(true); setShowLoginModal(false); setExpandedCard(null); setIsMenuOpen(false); }}>👥 About Us</button>
             {loggedInUser ? (
               <div className="nav-user">
                 <span className="nav-username">👤 {loggedInUser.email.split('@')[0]}</span>
-                <button className="nav-btn nav-btn-outline" onClick={handleLogout}>Log Out</button>
+                <button className="nav-btn nav-btn-outline" onClick={() => { handleLogout(); setIsMenuOpen(false); }}>Log Out</button>
               </div>
             ) : (
-              <button className="nav-btn nav-btn-solid" onClick={() => { setShowLoginModal(true); setShowAboutModal(false); }}>🔐 Log In</button>
+              <button className="nav-btn nav-btn-solid" onClick={() => { setShowLoginModal(true); setShowAboutModal(false); setIsMenuOpen(false); }}>🔐 Log In</button>
             )}
           </div>
         </nav>
@@ -334,7 +364,7 @@ export default function App() {
                   { icon: "🎨", title: "Customize Themes", desc: "Light & Dark theme modes with real-time preview" },
                   { icon: "☁️", title: "Auto-Save", desc: "Your data is automatically saved to your private account" },
                   { icon: "📥", title: "Export as PDF", desc: "Download your resume as an ATS-friendly PDF instantly" },
-                  { icon: "🔒", title: "Auto-Delete", desc: "We securely wipe your data from our servers once you download" },
+                  { icon: "🔒", title: "Auto-Delete", desc: "We securely wipe your data from our servers after 1 day" },
                   { icon: "📊", title: "Word Counter", desc: "Track word count and get real-time suggestions" },
                 ].map((f) => (
                   <div className="feature" key={f.title}>
@@ -450,7 +480,6 @@ export default function App() {
       
       {page === "builder" && (
         <div className="builder-page">
-          {/* UPDATED: Reverted back to smooth internal navigation! */}
           <button className="back-home-btn" onClick={goToLanding}>← Home</button>
           
           {showTemplateModal && (

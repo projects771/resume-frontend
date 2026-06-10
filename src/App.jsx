@@ -147,7 +147,6 @@ export default function App() {
     }
   };
 
-  // UPDATED: Standard Base64 Image Upload instead of Cloudinary
   const handlePhoto = (e) => {
     const file = e.target.files?.[0]; 
     if (!file) return;
@@ -158,7 +157,7 @@ export default function App() {
 
     const reader = new FileReader();
     reader.onloadend = () => {
-      setPhotoSrc(reader.result); // Automatically saves Base64 string to state & triggers DB autosave
+      setPhotoSrc(reader.result); 
       setSaveStatus("Image uploaded! ✔️");
     };
     reader.readAsDataURL(file);
@@ -168,9 +167,9 @@ export default function App() {
     setPhotoSrc(null); 
   };
   
-const handlePrint = useReactToPrint({
-    content: () => resumeRef.current, // Supports older versions (v2)
-    contentRef: resumeRef,            // Supports newest versions (v3)
+  const handlePrint = useReactToPrint({
+    content: () => resumeRef.current, 
+    contentRef: resumeRef,            
     documentTitle: `${form.name || 'Resume'}_SyntaxCV`,
     onAfterPrint: () => {
       if (token) {
@@ -263,7 +262,11 @@ const handlePrint = useReactToPrint({
       {page === "landing" && (
         <nav className="top-nav">
           <button className="nav-logo" onClick={goToLanding} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
-            <img src="/syntaxcv_navbar.png" alt="SyntaxCV" style={{ height: '40px', width: 'auto' }} />
+            <img 
+              src={theme === "dark" ? "/syntaxcv_navbar_dark.png" : "/syntaxcv_navbar_light.png"} 
+              alt="SyntaxCV" 
+              style={{ height: '40px', width: 'auto' }} 
+            />
           </button>
           <div className="nav-actions">
             <button className="nav-btn nav-btn-ghost" onClick={() => { setShowAboutModal(true); setShowLoginModal(false); setExpandedCard(null); }}>👥 About Us</button>
@@ -285,7 +288,11 @@ const handlePrint = useReactToPrint({
             <div className="landing-content">
               
               <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-                <img src="/syntaxcv_hero.png" alt="SyntaxCV - Professional Resume Builder" style={{ maxWidth: '100%', height: 'auto', maxHeight: '180px' }} />
+                <img 
+                  src={theme === "dark" ? "/syntaxcv_hero_dark.png" : "/syntaxcv_hero_light.png"} 
+                  alt="SyntaxCV - Professional Resume Builder" 
+                  style={{ maxWidth: '100%', height: 'auto', maxHeight: '180px' }} 
+                />
               </div>
 
               <div className="landing-features">
@@ -501,7 +508,6 @@ const handlePrint = useReactToPrint({
               </div>
               
               <div className="btn-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                {/* UPDATED: Download button renamed */}
                 <button className="btn btn-success" onClick={handlePrint} style={{ gridColumn: "span 2" }}>⬇️ Download resume</button>
                 <button className="btn btn-info" onClick={undo} title="Ctrl+Z">↶ Undo</button>
                 <button className="btn btn-info" onClick={redo} title="Ctrl+Y">↷ Redo</button>
